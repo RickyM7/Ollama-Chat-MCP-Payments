@@ -1,19 +1,27 @@
 import assert from 'node:assert/strict'
-import { BadArgs, CATALOG, DEFAULT_TZ, getTime, listItems } from './tools.ts'
+import { CATALOGO, listarCatalogo } from './tools.ts'
 
-const here = getTime({})
-assert.equal(here.timezone, DEFAULT_TZ)
-assert.match(here.now, /^\d{2}\/\d{2}\/\d{4}/)
-assert.equal(getTime({ timezone: '  ' }).timezone, DEFAULT_TZ)
-assert.equal(getTime({ timezone: 42 }).timezone, DEFAULT_TZ)
-assert.match(getTime({ timezone: 'UTC' }).now, /\d{4}/)
-assert.notEqual(getTime({ timezone: 'Asia/Tokyo' }).now, getTime({ timezone: 'America/Sao_Paulo' }).now)
-assert.throws(() => getTime({ timezone: 'Mars/Olympus' }), BadArgs)
+// Testa listagem completa sem filtros
+const all = listarCatalogo()
+assert.equal(all.produtos.length, CATALOGO.length)
+assert.equal(typeof all.produtos[0].id, 'string')
+assert.equal(typeof all.produtos[0].nome, 'string')
+assert.equal(typeof all.produtos[0].preco, 'number')
+assert.equal(all.produtos[0].moeda, 'BRL')
+assert.equal(typeof all.produtos[0].estoque, 'number')
 
-assert.equal(listItems({}).count, CATALOG.length)
-assert.equal(listItems({ search: 'playstation' }).items[0].sku, 'PS5')
-assert.equal(listItems({ search: '  Monitor ' }).count, 1)
-assert.equal(listItems({ search: 'unobtainium' }).count, 0)
-assert.equal(listItems({ search: 99 }).count, CATALOG.length)
+// Testa filtro por categoria existente
+const audio = listarCatalogo({ categoria: 'audio' })
+assert.equal(audio.produtos.length, 1)
+assert.equal(audio.produtos[0].id, 'prod_003')
+assert.equal(audio.produtos[0].nome, 'Fone Bluetooth')
 
-console.log('tools.ts ok')
+// Testa filtro case-insensitive e com espaços
+const perifericos = listarCatalogo({ categoria: '  PERIFERICOS ' })
+assert.equal(perifericos.produtos.length, 2)
+
+// Testa categoria inexistente
+const vazia = listarCatalogo({ categoria: 'categoria_que_nao_existe' })
+assert.equal(vazia.produtos.length, 0)
+
+console.log('tools.check.ts: listar_catalogo validado com sucesso.')

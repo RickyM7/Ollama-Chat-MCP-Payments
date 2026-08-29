@@ -2,32 +2,21 @@ import express from 'express'
 import { z } from 'zod'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
-import { DEFAULT_TZ, getTime, listItems } from './tools.ts'
+import { listarCatalogo } from './tools.ts'
 
 const PORT = Number(process.env.PORT ?? 4000)
 
-const mcp = new McpServer({ name: 'ollama-tools', version: '1.0.0' })
+const mcp = new McpServer({ name: 'server-mcp', version: '1.0.0' })
 
 mcp.registerTool(
-  'get_time',
+  'listar_catalogo',
   {
-    description: `Data e hora atuais. Já retorna no horário de Brasília (UTC-3) por padrão.`,
+    description: 'Retorna os produtos disponíveis no catálogo da loja. Permite filtro opcional por categoria.',
     inputSchema: {
-      timezone: z.string().optional().describe(`Fuso IANA, ex.: America/Sao_Paulo. Padrão: ${DEFAULT_TZ}.`),
+      categoria: z.string().optional().describe('Filtro opcional por categoria de produto (ex: audio, perifericos, games).'),
     },
   },
-  async ({ timezone }) => json(getTime({ timezone }))
-)
-
-mcp.registerTool(
-  'list_items',
-  {
-    description: 'Lista os itens à venda e seus preços em reais. Opcionalmente filtra por nome.',
-    inputSchema: {
-      search: z.string().optional().describe('Trecho do nome do item, sem diferenciar maiúsculas.'),
-    },
-  },
-  async ({ search }) => json(listItems({ search }))
+  async ({ categoria }) => json(listarCatalogo({ categoria }))
 )
 
 function json(value: unknown) {
@@ -44,4 +33,4 @@ app.post('/mcp', async (req, res) => {
   await transport.handleRequest(req, res, req.body)
 })
 
-app.listen(PORT, () => console.log(`ollama-tools (MCP) on http://localhost:${PORT}/mcp`))
+app.listen(PORT, () => console.log(`server-mcp (MCP) on http://localhost:${PORT}/mcp`))

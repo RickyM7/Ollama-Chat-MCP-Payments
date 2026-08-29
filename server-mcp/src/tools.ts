@@ -1,28 +1,35 @@
+export type Product = {
+  id: string
+  nome: string
+  preco: number
+  moeda: string
+  estoque: number
+  categoria?: string
+}
 
-export const CATALOG = [
-  { sku: 'PS5', name: 'PlayStation 5', price: 4799.0, currency: 'BRL' },
-  { sku: 'PCGAMER', name: 'PC Gamer', price: 12499.0, currency: 'BRL' },
-  { sku: 'NOTEWORK', name: 'Notebook de trabalho', price: 6299.0, currency: 'BRL' },
-  { sku: 'MONITOR', name: 'Monitor 27" 144Hz', price: 1899.9, currency: 'BRL' },
-  { sku: 'CADEIRA', name: 'Cadeira gamer', price: 1299.0, currency: 'BRL' },
-  { sku: 'LHC', name: 'Acelerador de partículas de bancada (seminovo, poucos prótons rodados)', price: 4200000000.0, currency: 'BRL' },
+export const CATALOGO: Product[] = [
+  { id: 'prod_001', nome: 'PlayStation 5', preco: 4799.0, moeda: 'BRL', estoque: 10, categoria: 'games' },
+  { id: 'prod_002', nome: 'PC Gamer', preco: 12499.0, moeda: 'BRL', estoque: 5, categoria: 'informatica' },
+  { id: 'prod_003', nome: 'Fone Bluetooth', preco: 249.9, moeda: 'BRL', estoque: 12, categoria: 'audio' },
+  { id: 'prod_004', nome: 'Monitor Gamer 27" 144Hz', preco: 1899.9, moeda: 'BRL', estoque: 8, categoria: 'monitores' },
+  { id: 'prod_005', nome: 'Cadeira Gamer Ergonômica', preco: 1299.0, moeda: 'BRL', estoque: 15, categoria: 'moveis' },
+  { id: 'prod_006', nome: 'Mouse Sem Fio', preco: 149.5, moeda: 'BRL', estoque: 25, categoria: 'perifericos' },
+  { id: 'prod_007', nome: 'Teclado Mecânico RGB', preco: 299.9, moeda: 'BRL', estoque: 18, categoria: 'perifericos' },
 ]
 
-export const DEFAULT_TZ = 'America/Sao_Paulo'
+export function listarCatalogo(args?: { categoria?: string }) {
+  const cat = typeof args?.categoria === 'string' ? args.categoria.trim().toLowerCase() : ''
+  const produtos = cat
+    ? CATALOGO.filter((p) => p.categoria?.toLowerCase() === cat)
+    : CATALOGO
 
-export function getTime(args: { timezone?: unknown }) {
-  const tz = typeof args.timezone === 'string' && args.timezone.trim() ? args.timezone.trim() : DEFAULT_TZ
-  try {
-    return { timezone: tz, now: new Date().toLocaleString('pt-BR', { timeZone: tz, timeZoneName: 'short' }) }
-  } catch {
-    throw new BadArgs(`unknown timezone: ${tz}`)
+  return {
+    produtos: produtos.map(({ id, nome, preco, moeda, estoque }) => ({
+      id,
+      nome,
+      preco,
+      moeda,
+      estoque,
+    })),
   }
 }
-
-export function listItems(args: { search?: unknown }) {
-  const q = typeof args.search === 'string' ? args.search.trim().toLowerCase() : ''
-  const items = q ? CATALOG.filter((i) => i.name.toLowerCase().includes(q)) : CATALOG
-  return { count: items.length, items }
-}
-
-export class BadArgs extends Error {}
