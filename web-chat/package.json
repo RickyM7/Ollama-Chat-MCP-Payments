@@ -2,9 +2,11 @@
   "name": "ollama-chat",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "check": "node src/lib/chat-history.check.ts && tsc --noEmit",
     "start": "next start",
     "lint": "eslint"
   },

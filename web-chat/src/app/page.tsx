@@ -2,39 +2,55 @@
 
 import { useRef, useState } from 'react'
 import Markdown from 'react-markdown'
+import { LoginForm } from '@/components/LoginForm'
+import { ChatHeader } from '@/components/ChatHeader'
+import type { AuthResponse } from '@/types/index'
 
 type Role = 'system' | 'user' | 'assistant'
 type Message = { role: Role; content: string }
 type ToolRun = { name: string; arguments: Record<string, unknown>; result: unknown }
-type Turn = Message & { sent?: Message[]; tools?: ToolRun[] }
-type ChatId = 'stateless' | 'withHistory'
+type ModelMessage = {
+  role: Role | 'tool'
+  content: string
+  tool_calls?: { function: { name: string; arguments: Record<string, unknown> } }[]
+}
+type Turn = Message & { sent?: ModelMessage[]; tools?: ToolRun[] }
 
 const SYSTEM: Message = {
   role: 'system',
   content:
-    'Você é um vendedor de uma loja de eletrônicos. Responda SEMPRE em português brasileiro, de forma objetiva e educada. Nunca escreva em inglês. ' +
-    'Fale apenas sobre a loja: produtos, preços, disponibilidade e horário. Se perguntarem outra coisa, diga que só pode ajudar com a loja. ' +
-    'Você tem ferramentas: use get_time para qualquer pergunta sobre data ou hora atual, e list_items para qualquer pergunta sobre o que está à venda ou quanto custa. ' +
-    'Nunca invente produtos nem preços — chame a ferramenta. Mostre os preços em reais, no formato R$ 1.234,56.',
+    'Você é um vendedor de uma loja de eletrônicos. Responda sempre em português brasileiro, de forma objetiva e educada. ' +
+    'Use listar_catalogo para consultar produtos e preços. Use registrar_intencao quando o usuário escolher produto e quantidade. ' +
+    'Só use realizar_compra depois que houver uma intenção válida e o usuário escolher cartao ou pix. ' +
+    'Nunca invente produtos, preços, valores, IDs ou resultados; explique claramente qualquer erro retornado pelas ferramentas.',
 }
 
-const CHATS: { id: ChatId; label: string }[] = [
-  { id: 'stateless', label: 'Sem memória (só a última mensagem)' },
-  { id: 'withHistory', label: 'Histórico completo' },
-]
+function modelHistory(turns: Turn[]): ModelMessage[] {
+  const result: ModelMessage[] = []
+  for (const turn of turns) {
+    result.push({ role: turn.role, content: turn.content })
+    if (!turn.tools?.length) continue
+    result.push({
+      role: 'assistant',
+      content: '',
+      tool_calls: turn.tools.map((tool) => ({
+        function: { name: tool.name, arguments: tool.arguments },
+      })),
+    })
+    for (const tool of turn.tools) result.push({ role: 'tool', content: JSON.stringify(tool.result) })
+  }
+  return result
+}
 
 export default function Page() {
-  const [chats, setChats] = useState<Record<ChatId, Turn[]>>({
-    stateless: [],
-    withHistory: [],
-  })
-  const [active, setActive] = useState<ChatId>('stateless')
+  const [auth, setAuth] = useState<AuthResponse | null>(null)
+  const [messages, setMessages] = useState<Turn[]>([])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [peek, setPeek] = useState<number | null>(null)
   const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-
-  const messages = chats[active]
+  const sessionId = useRef<string | null>(null)
+  if (!sessionId.current) sessionId.current = crypto.randomUUID()
 
   function showPeek(i: number) {
     clearTimeout(closeTimer.current)
@@ -44,32 +60,30 @@ export default function Page() {
     closeTimer.current = setTimeout(() => setPeek(null), 400)
   }
 
-  function setChat(id: ChatId, next: Turn[]) {
-    setChats((prev) => ({ ...prev, [id]: next }))
-  }
-
   async function send(e: { preventDefault(): void }) {
     e.preventDefault()
     if (!input.trim() || busy) return
 
-    const id = active
     const user: Message = { role: 'user', content: input }
-    const history = chats[id].map(({ role, content }) => ({ role, content }))
-    const payload: Message[] =
-      id === 'withHistory' ? [SYSTEM, ...history, user] : [SYSTEM, user]
+    const history = modelHistory(messages)
+    const payload: ModelMessage[] = [SYSTEM, ...history, user]
 
     const turn: Turn = { ...user, sent: payload }
-    const next: Turn[] = [...chats[id], turn]
-    setChat(id, [...next, { role: 'assistant', content: '' }])
+    const next: Turn[] = [...messages, turn]
+    setMessages([...next, { role: 'assistant', content: '' }])
     setInput('')
     setBusy(true)
 
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: payload }),
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth?.token ?? ''}` },
+        body: JSON.stringify({ message: user.content, sessionId: sessionId.current }),
       })
+      if (res.status === 401) {
+        setAuth(null)
+        throw new Error('Sua sessão expirou. Faça login novamente.')
+      }
       if (!res.ok || !res.body) throw new Error(await res.text())
 
       const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
@@ -88,47 +102,39 @@ export default function Page() {
           if (chunk.error) throw new Error(chunk.error)
           if (chunk.tool) {
             turn.tools = [...(turn.tools ?? []), chunk.tool]
+            if (chunk.tool.result?.status === 'aprovado' && typeof chunk.tool.result.limite_restante === 'number') {
+              setAuth((current) => current ? { ...current, limite: chunk.tool.result.limite_restante } : current)
+            }
             reply = ''
           }
           reply += chunk.message?.content ?? ''
-          setChat(id, [...next, { role: 'assistant', content: reply }])
+          setMessages([...next, { role: 'assistant', content: reply }])
         }
       }
     } catch (err) {
-      setChat(id, [...next, { role: 'assistant', content: `Erro: ${err}` }])
+      setMessages([...next, { role: 'assistant', content: `Erro: ${err}` }])
     } finally {
       setBusy(false)
     }
   }
 
+  if (!auth) return <LoginForm onLoginSuccess={setAuth} />
+
   return (
     <main className="mx-auto flex h-screen max-w-2xl flex-col gap-4 p-4">
-      <div className="flex gap-2">
-        {CHATS.map((c) => (
-          <button
-            key={c.id}
-            onClick={() => {
-              setActive(c.id)
-              setPeek(null)
-            }}
-            className={
-              c.id === active
-                ? 'rounded bg-blue-600 px-3 py-2 text-sm text-white'
-                : 'rounded border px-3 py-2 text-sm'
-            }
-          >
-            {c.label}
-          </button>
-        ))}
-      </div>
+      <ChatHeader
+        user={auth}
+        onLogout={() => {
+          setAuth(null)
+          setMessages([])
+          sessionId.current = crypto.randomUUID()
+        }}
+      />
+      <p className="text-xs text-gray-500">Histórico completo ativo, incluindo chamadas e resultados das ferramentas.</p>
 
       <div className="flex-1 space-y-3 overflow-y-auto">
         {messages.length === 0 && (
-          <p className="text-sm text-gray-500">
-            {active === 'withHistory'
-              ? 'Todas as mensagens anteriores vão junto em cada requisição.'
-              : 'Só a sua última mensagem é enviada — o modelo não vê histórico.'}
-          </p>
+          <p className="text-sm text-gray-500">Pergunte sobre o catálogo ou escolha um produto para iniciar uma compra.</p>
         )}
         {messages.map((m, i) =>
           m.role === 'user' ? (
