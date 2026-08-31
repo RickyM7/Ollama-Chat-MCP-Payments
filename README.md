@@ -86,7 +86,7 @@ Interface disponível em: `http://localhost:3000`
 |---|---|---:|
 | `alice` | `alice123` | R$ 500,00 |
 | `bob` | `bob123` | R$ 1.500,00 |
-| `root` | `root123` | R$ 5.000,00 |
+| `carla` | `carla123` | R$ 5.000,00 |
 
 ## Fluxo seguro de compra
 
