@@ -20,7 +20,7 @@ export function ChatHeader({ user, onLogout }: Props) {
           Chatbot de Pagamentos MCP
         </h1>
         <p className="text-xs text-gray-500">
-          Usuário: <strong className="text-gray-800 dark:text-gray-200">{user.username}</strong> ({user.role})
+          Usuário: <strong className="text-gray-800 dark:text-gray-200">{user.username}</strong>
         </p>
       </div>
 
@@ -39,4 +39,3 @@ export function ChatHeader({ user, onLogout }: Props) {
     </header>
   )
 }
-

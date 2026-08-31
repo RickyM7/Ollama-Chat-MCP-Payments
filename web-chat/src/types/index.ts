@@ -1,4 +1,4 @@
-export type Role = 'user' | 'admin'
+export type Role = 'user'
 
 export type User = {
   username: string
@@ -14,4 +14,3 @@ export type AuthResponse = {
   limite: number
   expiresIn: string
 }
-

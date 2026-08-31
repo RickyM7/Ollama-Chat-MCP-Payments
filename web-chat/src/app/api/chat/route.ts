@@ -1,7 +1,6 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { verifyUserToken } from '@/lib/auth'
-import { intentAppearsInHistory, isCatalogRequest } from '@/lib/chat-history'
 import { CHAT_SYSTEM_PROMPT } from '@/lib/chat-system'
 
 const OLLAMA_URL = process.env.OLLAMA_URL ?? 'http://localhost:11434'
@@ -20,18 +19,18 @@ const SYSTEM: Message = {
   content: CHAT_SYSTEM_PROMPT,
 }
 
-const globalState = globalThis as typeof globalThis & {
-  paymentChatHistories?: Map<string, Message[]>
-}
-const chatHistories = globalState.paymentChatHistories ??= new Map<string, Message[]>()
-
 async function connect(token: string, sessionId: string) {
-  const client = new Client({ name: 'ollama-chat', version: '1.0.0' })
-  await client.connect(new StreamableHTTPClientTransport(new URL(MCP_URL), {
-    requestInit: {
-      headers: { Authorization: `Bearer ${token}`, 'X-Chat-Session': sessionId },
-    },
-  }))
+  const client = new Client({ name: 'web-chat-agent', version: '1.0.0' })
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(MCP_URL), {
+      requestInit: {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'X-Chat-Session': sessionId,
+        },
+      },
+    })
+  )
   return client
 }
 
@@ -44,7 +43,10 @@ function toOllamaTools(mcpTools: { name: string; description?: string; inputSche
 
 async function runTool(client: Client, call: ToolCall) {
   try {
-    const out = await client.callTool({ name: call.function.name, arguments: call.function.arguments ?? {} })
+    const out = await client.callTool({
+      name: call.function.name,
+      arguments: call.function.arguments ?? {},
+    })
     const text = Array.isArray(out.content) ? out.content.find((c) => c.type === 'text')?.text : undefined
     if (out.isError) return { error: text ?? 'tool failed' }
     try {
@@ -57,12 +59,6 @@ async function runTool(client: Client, call: ToolCall) {
   }
 }
 
-function historyHasToolCall(messages: Message[], toolName: string) {
-  return messages.some((message) =>
-    message.tool_calls?.some((call) => call.function.name === toolName)
-  )
-}
-
 export async function POST(request: Request) {
   const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
   const authenticatedUser = token ? verifyUserToken(token) : null
@@ -70,9 +66,9 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Não autorizado.' }, { status: 401 })
   }
 
-  const { message, sessionId } = await request.json()
-  if (typeof message !== 'string' || !message.trim()) {
-    return Response.json({ error: 'message must be a non-empty string' }, { status: 400 })
+  const { messages, sessionId } = await request.json()
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return Response.json({ error: 'messages must be a non-empty array' }, { status: 400 })
   }
   if (typeof sessionId !== 'string' || !sessionId.trim()) {
     return Response.json({ error: 'sessionId is required' }, { status: 400 })
@@ -91,26 +87,13 @@ export async function POST(request: Request) {
   }
 
   const encoder = new TextEncoder()
-  const historyKey = `${authenticatedUser.username}\u0000${sessionId}`
-  const convo: Message[] = [
-    ...(chatHistories.get(historyKey) ?? [SYSTEM]),
-    { role: 'user', content: message.trim() },
-  ]
+  const convo: Message[] = [SYSTEM, ...messages]
 
   const stream = new ReadableStream({
     async start(controller) {
       const line = (obj: unknown) => controller.enqueue(encoder.encode(JSON.stringify(obj) + '\n'))
 
       try {
-        if (!historyHasToolCall(convo, 'listar_catalogo') || isCatalogRequest(message)) {
-          const catalogCall: ToolCall = { function: { name: 'listar_catalogo', arguments: {} } }
-          const catalogResult = await runTool(client, catalogCall)
-          convo.push({ role: 'assistant', content: '', tool_calls: [catalogCall] })
-          convo.push({ role: 'tool', content: JSON.stringify(catalogResult) })
-          chatHistories.set(historyKey, convo)
-          line({ tool: { name: catalogCall.function.name, arguments: {}, result: catalogResult } })
-        }
-
         for (let round = 0; round < MAX_ROUNDS; round++) {
           const res = await fetch(`${OLLAMA_URL}/api/chat`, {
             method: 'POST',
@@ -170,27 +153,14 @@ export async function POST(request: Request) {
           if (calls.length === 0) {
             flush()
             convo.push({ role: 'assistant', content })
-            chatHistories.set(historyKey, convo)
             line({ done: true })
             break
           }
 
           convo.push({ role: 'assistant', content, tool_calls: calls })
           for (const call of calls) {
-            const intentId = call.function.arguments?.intencao_id
-            const missingFromHistory =
-              call.function.name === 'realizar_compra' &&
-              typeof intentId === 'string' &&
-              !intentAppearsInHistory(convo, intentId)
-            const result = missingFromHistory
-              ? {
-                  status: 'recusado',
-                  erro: 'INTENCAO_INVALIDA',
-                  mensagem: 'A intenção informada não apareceu no histórico desta conversa.',
-                }
-              : await runTool(client, call)
+            const result = await runTool(client, call)
             convo.push({ role: 'tool', content: JSON.stringify(result) })
-            chatHistories.set(historyKey, convo)
             line({ tool: { name: call.function.name, arguments: call.function.arguments, result } })
           }
         }
@@ -207,4 +177,3 @@ export async function POST(request: Request) {
     headers: { 'Content-Type': 'application/x-ndjson', 'Cache-Control': 'no-store' },
   })
 }
-

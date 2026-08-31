@@ -1,13 +1,12 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import { LoginForm } from '@/components/LoginForm'
 import { ChatHeader } from '@/components/ChatHeader'
-import { CHAT_SYSTEM_PROMPT } from '@/lib/chat-system'
 import type { AuthResponse } from '@/types/index'
 
-type Role = 'system' | 'user' | 'assistant'
+type Role = 'user' | 'assistant'
 type Message = { role: Role; content: string }
 type ToolRun = { name: string; arguments: Record<string, unknown>; result: unknown }
 type ModelMessage = {
@@ -16,11 +15,6 @@ type ModelMessage = {
   tool_calls?: { function: { name: string; arguments: Record<string, unknown> } }[]
 }
 type Turn = Message & { sent?: ModelMessage[]; tools?: ToolRun[] }
-
-const SYSTEM: Message = {
-  role: 'system',
-  content: CHAT_SYSTEM_PROMPT,
-}
 
 function modelHistory(turns: Turn[]): ModelMessage[] {
   const result: ModelMessage[] = []
@@ -34,7 +28,9 @@ function modelHistory(turns: Turn[]): ModelMessage[] {
         function: { name: tool.name, arguments: tool.arguments },
       })),
     })
-    for (const tool of turn.tools) result.push({ role: 'tool', content: JSON.stringify(tool.result) })
+    for (const tool of turn.tools) {
+      result.push({ role: 'tool', content: JSON.stringify(tool.result) })
+    }
   }
   return result
 }
@@ -48,6 +44,51 @@ export default function Page() {
   const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const sessionId = useRef<string | null>(null)
   if (!sessionId.current) sessionId.current = crypto.randomUUID()
+
+  useEffect(() => {
+    try {
+      const savedAuth = sessionStorage.getItem('chat_auth')
+      const savedSession = sessionStorage.getItem('chat_session_id')
+      if (savedAuth) {
+        const parsed = JSON.parse(savedAuth) as AuthResponse
+        setAuth(parsed)
+        if (savedSession) sessionId.current = savedSession
+        fetch('/api/auth/me', { headers: { Authorization: `Bearer ${parsed.token}` } })
+          .then((res) => (res.ok ? res.json() : null))
+          .then((me) => {
+            if (me && typeof me.limite === 'number') {
+              setAuth((current) => {
+                if (!current) return current
+                const updated = { ...current, limite: me.limite }
+                try {
+                  sessionStorage.setItem('chat_auth', JSON.stringify(updated))
+                } catch {}
+                return updated
+              })
+            }
+          })
+          .catch(() => {})
+      }
+    } catch {}
+  }, [])
+
+  function handleLoginSuccess(data: AuthResponse) {
+    setAuth(data)
+    try {
+      sessionStorage.setItem('chat_auth', JSON.stringify(data))
+      if (sessionId.current) sessionStorage.setItem('chat_session_id', sessionId.current)
+    } catch {}
+  }
+
+  function handleLogout() {
+    setAuth(null)
+    setMessages([])
+    sessionId.current = crypto.randomUUID()
+    try {
+      sessionStorage.removeItem('chat_auth')
+      sessionStorage.removeItem('chat_session_id')
+    } catch {}
+  }
 
   function showPeek(i: number) {
     clearTimeout(closeTimer.current)
@@ -63,7 +104,7 @@ export default function Page() {
 
     const user: Message = { role: 'user', content: input }
     const history = modelHistory(messages)
-    const payload: ModelMessage[] = [SYSTEM, ...history, user]
+    const payload: ModelMessage[] = [...history, user]
 
     const turn: Turn = { ...user, sent: payload }
     const next: Turn[] = [...messages, turn]
@@ -74,11 +115,14 @@ export default function Page() {
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth?.token ?? ''}` },
-        body: JSON.stringify({ message: user.content, sessionId: sessionId.current }),
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${auth?.token ?? ''}`,
+        },
+        body: JSON.stringify({ messages: payload, sessionId: sessionId.current }),
       })
       if (res.status === 401) {
-        setAuth(null)
+        handleLogout()
         throw new Error('Sua sessão expirou. Faça login novamente.')
       }
       if (!res.ok || !res.body) throw new Error(await res.text())
@@ -99,8 +143,18 @@ export default function Page() {
           if (chunk.error) throw new Error(chunk.error)
           if (chunk.tool) {
             turn.tools = [...(turn.tools ?? []), chunk.tool]
-            if (chunk.tool.result?.status === 'aprovado' && typeof chunk.tool.result.limite_restante === 'number') {
-              setAuth((current) => current ? { ...current, limite: chunk.tool.result.limite_restante } : current)
+            if (
+              chunk.tool.result?.status === 'aprovado' &&
+              typeof chunk.tool.result.limite_restante === 'number'
+            ) {
+              setAuth((current) => {
+                if (!current) return current
+                const updated = { ...current, limite: chunk.tool.result.limite_restante }
+                try {
+                  sessionStorage.setItem('chat_auth', JSON.stringify(updated))
+                } catch {}
+                return updated
+              })
             }
             reply = ''
           }
@@ -115,23 +169,20 @@ export default function Page() {
     }
   }
 
-  if (!auth) return <LoginForm onLoginSuccess={setAuth} />
+  if (!auth) return <LoginForm onLoginSuccess={handleLoginSuccess} />
 
   return (
     <main className="mx-auto flex h-screen max-w-2xl flex-col gap-4 p-4">
-      <ChatHeader
-        user={auth}
-        onLogout={() => {
-          setAuth(null)
-          setMessages([])
-          sessionId.current = crypto.randomUUID()
-        }}
-      />
-      <p className="text-xs text-gray-500">Histórico completo ativo, incluindo chamadas e resultados das ferramentas.</p>
+      <ChatHeader user={auth} onLogout={handleLogout} />
+      <p className="text-xs text-gray-500">
+        Histórico completo ativo, incluindo chamadas e resultados das ferramentas.
+      </p>
 
       <div className="flex-1 space-y-3 overflow-y-auto">
         {messages.length === 0 && (
-          <p className="text-sm text-gray-500">Pergunte sobre o catálogo ou escolha um produto para iniciar uma compra.</p>
+          <p className="text-sm text-gray-500">
+            Pergunte sobre o catálogo ou escolha um produto para iniciar uma compra.
+          </p>
         )}
         {messages.map((m, i) =>
           m.role === 'user' ? (
@@ -156,12 +207,15 @@ export default function Page() {
 
       <form onSubmit={send} className="flex gap-2">
         <input
-          className="flex-1 rounded border px-3 py-2"
+          className="flex-1 rounded border px-3 py-2 text-sm bg-transparent border-gray-300 dark:border-gray-700 focus:outline-none focus:border-blue-600"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Pergunte alguma coisa…"
         />
-        <button className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50" disabled={busy}>
+        <button
+          className="rounded bg-blue-600 px-4 py-2 text-sm text-white disabled:opacity-50 hover:bg-blue-700"
+          disabled={busy}
+        >
           Enviar
         </button>
       </form>
@@ -177,8 +231,13 @@ export default function Page() {
             {messages[peek].sent.length === 1 ? 'mensagem' : 'mensagens'})
           </p>
           {messages[peek].tools?.map((t, j) => (
-            <div key={`tool-${j}`} className="mb-2 rounded border border-amber-400 bg-amber-50 p-2 dark:bg-amber-950">
-              <span className="font-mono uppercase text-amber-700 dark:text-amber-400">ferramenta · {t.name}</span>
+            <div
+              key={`tool-${j}`}
+              className="mb-2 rounded border border-amber-400 bg-amber-50 p-2 dark:bg-amber-950"
+            >
+              <span className="font-mono uppercase text-amber-700 dark:text-amber-400">
+                ferramenta · {t.name}
+              </span>
               <p className="whitespace-pre-wrap font-mono">
                 {JSON.stringify(t.arguments)} → {JSON.stringify(t.result)}
               </p>
@@ -195,4 +254,3 @@ export default function Page() {
     </main>
   )
 }
-

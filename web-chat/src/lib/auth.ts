@@ -25,7 +25,7 @@ export function verifyPassword(password: string, stored: string): boolean {
 export const USERS: User[] = [
   { username: 'alice', passwordHash: hashPassword('alice123'), role: 'user', limite: 500.0 },
   { username: 'bob', passwordHash: hashPassword('bob123'), role: 'user', limite: 1500.0 },
-  { username: 'root', passwordHash: hashPassword('root123'), role: 'admin', limite: 5000.0 },
+  { username: 'carla', passwordHash: hashPassword('carla123'), role: 'user', limite: 5000.0 },
 ]
 
 export function findUserByUsername(username: string): User | undefined {
@@ -61,13 +61,6 @@ export function verifyUserToken(token: string): { username: string; role: Role; 
   }
 }
 
-export function deductUserBalance(username: string, amount: number): boolean {
-  const user = findUserByUsername(username)
-  if (!user || user.limite < amount) return false
-  user.limite = Number((user.limite - amount).toFixed(2))
-  return true
-}
-
 export async function getCurrentUserLimit(token: string, fallback: number): Promise<number> {
   try {
     const accountUrl = new URL(process.env.MCP_URL ?? 'http://localhost:4000/mcp')
@@ -78,7 +71,7 @@ export async function getCurrentUserLimit(token: string, fallback: number): Prom
       cache: 'no-store',
     })
     if (!response.ok) return fallback
-    const data = await response.json() as { limite?: unknown }
+    const data = (await response.json()) as { limite?: unknown }
     return typeof data.limite === 'number' && data.limite >= 0 ? data.limite : fallback
   } catch {
     return fallback
