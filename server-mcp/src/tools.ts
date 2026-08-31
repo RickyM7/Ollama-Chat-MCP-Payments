@@ -1,5 +1,8 @@
 import { randomBytes } from 'node:crypto'
 
+import { appendFileSync, mkdirSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+
 export type Product = { id: string; nome: string; preco: number; moeda: string; estoque: number; categoria?: string }
 export type PaymentContext = { username: string; sessionId: string; limiteInicial: number }
 type PaymentMethod = 'cartao' | 'pix'
@@ -21,6 +24,7 @@ const INTENT_TTL_MS = 10 * 60 * 1000
 const intents = new Map<string, PurchaseIntent>()
 const balances = new Map<string, number>()
 const auditLogs: AuditLogEntry[] = []
+const LOGS_FILE = join(process.cwd(), 'logs', 'audit.jsonl')
 
 export function registrarAuditoria(
   usuario: string,
@@ -39,6 +43,10 @@ export function registrarAuditoria(
   }
   auditLogs.push(entry)
   console.log(`[AUDIT] ${entry.timestamp} | User: ${usuario} | Tool: ${tool} | Result: ${JSON.stringify(resultado)}`)
+  try {
+    mkdirSync(dirname(LOGS_FILE), { recursive: true })
+    appendFileSync(LOGS_FILE, JSON.stringify(entry) + '\n', 'utf8')
+  } catch {}
 }
 
 export function obterLogsAuditoria(): AuditLogEntry[] {
