@@ -1,8 +1,9 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import { verifyJWT, getJWTFromCookie } from '@/lib/auth'
 
 const OLLAMA_URL = process.env.OLLAMA_URL ?? 'http://localhost:11434'
-const MODEL = process.env.OLLAMA_MODEL ?? 'qwen2.5:14b'
+const MODEL = process.env.OLLAMA_MODEL ?? 'qwen3:1.7b'
 const MCP_URL = process.env.MCP_URL ?? 'http://localhost:4000/mcp'
 const HOLD_MS = 600
 const MAX_ROUNDS = 4
@@ -10,9 +11,29 @@ const MAX_ROUNDS = 4
 type Message = { role: string; content: string; tool_calls?: ToolCall[] }
 type ToolCall = { function: { name: string; arguments: Record<string, unknown> } }
 
-async function connect() {
+async function connect(userId: string) {
   const client = new Client({ name: 'ollama-chat', version: '1.0.0' })
-  await client.connect(new StreamableHTTPClientTransport(new URL(MCP_URL)))
+
+  // Store userId for fetch interception
+  const originalFetch = global.fetch
+  const patchedFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+    if (url.includes('/mcp')) {
+      const headers = new Headers(init?.headers || {})
+      headers.set('X-User-Id', userId)
+      return originalFetch(input, { ...init, headers })
+    }
+    return originalFetch(input, init)
+  }
+  global.fetch = patchedFetch as any
+
+  const transport = new StreamableHTTPClientTransport(new URL(MCP_URL))
+  try {
+    await client.connect(transport)
+  } finally {
+    global.fetch = originalFetch
+  }
+
   return client
 }
 
@@ -39,6 +60,20 @@ async function runTool(client: Client, call: ToolCall) {
 }
 
 export async function POST(request: Request) {
+  // Validate JWT
+  const cookieHeader = request.headers.get('cookie') ?? ''
+  const token = getJWTFromCookie(cookieHeader)
+
+  if (!token) {
+    return Response.json({ error: 'não autenticado' }, { status: 401 })
+  }
+
+  const payload = await verifyJWT(token)
+  if (!payload) {
+    return Response.json({ error: 'token inválido' }, { status: 401 })
+  }
+
+  const userId = payload.id
   const { messages } = await request.json()
   if (!Array.isArray(messages) || messages.length === 0) {
     return Response.json({ error: 'messages must be a non-empty array' }, { status: 400 })
@@ -47,7 +82,7 @@ export async function POST(request: Request) {
   let client: Client | undefined
   let tools: unknown[] | undefined
   try {
-    client = await connect()
+    client = await connect(userId)
     tools = toOllamaTools((await client.listTools()).tools)
   } catch {
     client = undefined
@@ -86,7 +121,7 @@ export async function POST(request: Request) {
             live = true
           }
 
-          for (;;) {
+          for (; ;) {
             const { value, done } = await reader.read()
             if (done) break
             buffer += value

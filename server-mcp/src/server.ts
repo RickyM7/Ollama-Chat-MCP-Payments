@@ -1,33 +1,74 @@
 import express from 'express'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { z } from 'zod'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
-import { DEFAULT_TZ, getTime, listItems } from './tools.ts'
+import { listarCatalogo, registrarIntencao, realizarCompra } from './tools.ts'
 
 const PORT = Number(process.env.PORT ?? 4000)
+const userIdStore = new AsyncLocalStorage<string>()
 
 const mcp = new McpServer({ name: 'ollama-tools', version: '1.0.0' })
 
 mcp.registerTool(
-  'get_time',
+  'listar_catalogo',
   {
-    description: `Data e hora atuais. Já retorna no horário de Brasília (UTC-3) por padrão.`,
+    description: 'Lista o catálogo completo de produtos disponíveis. Opcionalmente filtra por categoria.',
     inputSchema: {
-      timezone: z.string().optional().describe(`Fuso IANA, ex.: America/Sao_Paulo. Padrão: ${DEFAULT_TZ}.`),
+      categoria: z.string().optional().describe('Nome da categoria (ex: Eletrônicos, Computadores, Acessórios, Móveis, Pesquisa). Se omitida, lista todas.'),
     },
   },
-  async ({ timezone }) => json(getTime({ timezone }))
+  async ({ categoria }) => json(listarCatalogo({ categoria }))
 )
 
 mcp.registerTool(
-  'list_items',
+  'registrar_intencao',
   {
-    description: 'Lista os itens à venda e seus preços em reais. Opcionalmente filtra por nome.',
+    description: 'Registra a intenção de compra de um produto. Gera um ID de intenção válido por 15 minutos.',
     inputSchema: {
-      search: z.string().optional().describe('Trecho do nome do item, sem diferenciar maiúsculas.'),
+      produto_id: z.string().describe('ID do produto (ex: prod_001)'),
+      quantidade: z.number().positive().describe('Quantidade desejada (deve ser maior que 0)'),
     },
   },
-  async ({ search }) => json(listItems({ search }))
+  async ({ produto_id, quantidade }) => {
+    try {
+      const userId = userIdStore.getStore()
+      if (!userId) {
+        return json({ erro: 'X-User-Id header é obrigatório' })
+      }
+      return json(registrarIntencao({ produto_id, quantidade }, userId))
+    } catch (err) {
+      if (err instanceof Error) {
+        return json({ erro: err.message })
+      }
+      throw err
+    }
+  }
+)
+
+mcp.registerTool(
+  'realizar_compra',
+  {
+    description: 'Realiza o pagamento de uma intenção de compra. Aceita pagamento via PIX ou cartão.',
+    inputSchema: {
+      intencao_id: z.string().describe('ID da intenção registrada (ex: int_000001)'),
+      metodo_pagamento: z.enum(['pix', 'cartao']).describe('Método de pagamento: "pix" ou "cartao"'),
+    },
+  },
+  async ({ intencao_id, metodo_pagamento }) => {
+    try {
+      const userId = userIdStore.getStore()
+      if (!userId) {
+        return json({ erro: 'X-User-Id header é obrigatório' })
+      }
+      return json(realizarCompra({ intencao_id, metodo_pagamento }, userId))
+    } catch (err) {
+      if (err instanceof Error) {
+        return json({ erro: err.message })
+      }
+      throw err
+    }
+  }
 )
 
 function json(value: unknown) {
@@ -38,10 +79,17 @@ const app = express()
 app.use(express.json())
 
 app.post('/mcp', async (req, res) => {
-  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined })
-  res.on('close', () => transport.close())
-  await mcp.connect(transport)
-  await transport.handleRequest(req, res, req.body)
+  const userId = req.headers['x-user-id'] as string | undefined
+  if (!userId) {
+    return res.status(400).json({ error: 'X-User-Id header é obrigatório' })
+  }
+
+  await userIdStore.run(userId, async () => {
+    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined })
+    res.on('close', () => transport.close())
+    await mcp.connect(transport)
+    await transport.handleRequest(req, res, req.body)
+  })
 })
 
 app.listen(PORT, () => console.log(`ollama-tools (MCP) on http://localhost:${PORT}/mcp`))

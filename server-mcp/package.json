@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "node --watch src/server.ts",
     "start": "node src/server.ts",
-    "check": "node src/tools.check.ts && tsc --noEmit"
+    "check": "node src/tools.check.ts && tsc --noEmit",
+    "flows": "node src/flows.check.ts && npm run check"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
@@ -20,4 +21,3 @@
     "typescript": "^6.0.3"
   }
 }
-
