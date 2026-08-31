@@ -1,11 +1,14 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { verifyUserToken } from '@/lib/auth'
-import { intentAppearsInHistory } from '@/lib/chat-history'
+import { intentAppearsInHistory, isCatalogRequest } from '@/lib/chat-history'
+import { CHAT_SYSTEM_PROMPT } from '@/lib/chat-system'
 
 const OLLAMA_URL = process.env.OLLAMA_URL ?? 'http://localhost:11434'
 const MODEL = process.env.OLLAMA_MODEL ?? 'qwen3:1.7b'
 const MCP_URL = process.env.MCP_URL ?? 'http://localhost:4000/mcp'
+const OLLAMA_TEMPERATURE = Number(process.env.OLLAMA_TEMPERATURE ?? 0)
+const OLLAMA_NUM_CTX = Number(process.env.OLLAMA_NUM_CTX ?? 8192)
 const HOLD_MS = 600
 const MAX_ROUNDS = 4
 
@@ -14,11 +17,7 @@ type ToolCall = { function: { name: string; arguments: Record<string, unknown> }
 
 const SYSTEM: Message = {
   role: 'system',
-  content:
-    'Você é um vendedor de uma loja de eletrônicos. Responda sempre em português brasileiro, de forma objetiva e educada. ' +
-    'Use listar_catalogo para consultar produtos e preços. Use registrar_intencao quando o usuário escolher produto e quantidade. ' +
-    'Só use realizar_compra depois que houver uma intenção válida no histórico e o usuário escolher cartao ou pix. ' +
-    'Nunca invente produtos, preços, valores, IDs ou resultados; explique claramente qualquer erro retornado pelas ferramentas.',
+  content: CHAT_SYSTEM_PROMPT,
 }
 
 const globalState = globalThis as typeof globalThis & {
@@ -56,6 +55,12 @@ async function runTool(client: Client, call: ToolCall) {
   } catch (err) {
     return { error: `mcp: ${err}` }
   }
+}
+
+function historyHasToolCall(messages: Message[], toolName: string) {
+  return messages.some((message) =>
+    message.tool_calls?.some((call) => call.function.name === toolName)
+  )
 }
 
 export async function POST(request: Request) {
@@ -97,11 +102,26 @@ export async function POST(request: Request) {
       const line = (obj: unknown) => controller.enqueue(encoder.encode(JSON.stringify(obj) + '\n'))
 
       try {
+        if (!historyHasToolCall(convo, 'listar_catalogo') || isCatalogRequest(message)) {
+          const catalogCall: ToolCall = { function: { name: 'listar_catalogo', arguments: {} } }
+          const catalogResult = await runTool(client, catalogCall)
+          convo.push({ role: 'assistant', content: '', tool_calls: [catalogCall] })
+          convo.push({ role: 'tool', content: JSON.stringify(catalogResult) })
+          chatHistories.set(historyKey, convo)
+          line({ tool: { name: catalogCall.function.name, arguments: {}, result: catalogResult } })
+        }
+
         for (let round = 0; round < MAX_ROUNDS; round++) {
           const res = await fetch(`${OLLAMA_URL}/api/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: MODEL, messages: convo, tools, stream: true }),
+            body: JSON.stringify({
+              model: MODEL,
+              messages: convo,
+              tools,
+              stream: true,
+              options: { temperature: OLLAMA_TEMPERATURE, num_ctx: OLLAMA_NUM_CTX },
+            }),
             signal: request.signal,
           })
           if (!res.ok || !res.body) {

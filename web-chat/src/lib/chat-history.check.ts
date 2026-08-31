@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { intentAppearsInHistory } from './chat-history.ts'
+import { intentAppearsInHistory, isCatalogRequest } from './chat-history.ts'
 
 const history = [
   { role: 'system', content: 'instruções' },
@@ -14,5 +14,8 @@ assert.equal(
   false
 )
 assert.equal(intentAppearsInHistory([{ role: 'tool', content: 'resultado inválido' }], 'int_valida'), false)
+assert.equal(isCatalogRequest('Quais produtos estão disponíveis?'), true)
+assert.equal(isCatalogRequest('Quero comprar um mouse.'), true)
+assert.equal(isCatalogRequest('Pode pagar no pix.'), false)
 
 console.log('chat-history.check.ts: validação do histórico concluída com sucesso.')

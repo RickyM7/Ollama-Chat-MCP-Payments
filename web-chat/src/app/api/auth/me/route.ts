@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { verifyUserToken, findUserByUsername } from '@/lib/auth'
+import { verifyUserToken, findUserByUsername, getCurrentUserLimit } from '@/lib/auth'
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get('authorization')
@@ -19,10 +19,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Usuário não encontrado.' }, { status: 404 })
   }
 
+  const limite = await getCurrentUserLimit(token, user.limite)
+
   return NextResponse.json({
     username: user.username,
     role: user.role,
-    limite: user.limite,
+    limite,
   })
 }
 
