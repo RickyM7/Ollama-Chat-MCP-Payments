@@ -4,10 +4,9 @@ import { useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import { LoginForm } from '@/components/LoginForm'
 import { ChatHeader } from '@/components/ChatHeader'
-import { CHAT_SYSTEM_PROMPT } from '@/lib/chat-system'
 import type { AuthResponse } from '@/types/index'
 
-type Role = 'system' | 'user' | 'assistant'
+type Role = 'user' | 'assistant'
 type Message = { role: Role; content: string }
 type ToolRun = { name: string; arguments: Record<string, unknown>; result: unknown }
 type ModelMessage = {
@@ -16,11 +15,6 @@ type ModelMessage = {
   tool_calls?: { function: { name: string; arguments: Record<string, unknown> } }[]
 }
 type Turn = Message & { sent?: ModelMessage[]; tools?: ToolRun[] }
-
-const SYSTEM: Message = {
-  role: 'system',
-  content: CHAT_SYSTEM_PROMPT,
-}
 
 function modelHistory(turns: Turn[]): ModelMessage[] {
   const result: ModelMessage[] = []
@@ -63,7 +57,7 @@ export default function Page() {
 
     const user: Message = { role: 'user', content: input }
     const history = modelHistory(messages)
-    const payload: ModelMessage[] = [SYSTEM, ...history, user]
+    const payload: ModelMessage[] = [...history, user]
 
     const turn: Turn = { ...user, sent: payload }
     const next: Turn[] = [...messages, turn]
