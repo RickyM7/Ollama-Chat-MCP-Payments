@@ -8,9 +8,42 @@ type PurchaseIntent = {
   valorTotal: number; moeda: string; status: 'pendente' | 'paga'; expiraEm: Date
 }
 
+export type AuditLogEntry = {
+  timestamp: string
+  usuario: string
+  sessionId: string
+  tool: string
+  parametros: Record<string, unknown>
+  resultado: unknown
+}
+
 const INTENT_TTL_MS = 10 * 60 * 1000
 const intents = new Map<string, PurchaseIntent>()
 const balances = new Map<string, number>()
+const auditLogs: AuditLogEntry[] = []
+
+export function registrarAuditoria(
+  usuario: string,
+  sessionId: string,
+  tool: string,
+  parametros: Record<string, unknown>,
+  resultado: unknown
+) {
+  const entry: AuditLogEntry = {
+    timestamp: new Date().toISOString(),
+    usuario,
+    sessionId,
+    tool,
+    parametros,
+    resultado,
+  }
+  auditLogs.push(entry)
+  console.log(`[AUDIT] ${entry.timestamp} | User: ${usuario} | Tool: ${tool} | Result: ${JSON.stringify(resultado)}`)
+}
+
+export function obterLogsAuditoria(): AuditLogEntry[] {
+  return [...auditLogs]
+}
 
 export const CATALOGO: Product[] = [
   { id: 'prod_001', nome: 'PlayStation 5', preco: 4799.0, moeda: 'BRL', estoque: 10, categoria: 'games' },
@@ -45,12 +78,20 @@ export function registrarIntencao(
   now = new Date()
 ) {
   const produto = CATALOGO.find((item) => item.id === args.produto_id)
-  if (!produto) return { status: 'recusado' as const, erro: 'PRODUTO_INVALIDO', mensagem: 'Produto não encontrado no catálogo.' }
+  if (!produto) {
+    const res = { status: 'recusado' as const, erro: 'PRODUTO_INVALIDO', mensagem: 'Produto não encontrado no catálogo.' }
+    registrarAuditoria(context.username, context.sessionId, 'registrar_intencao', args, res)
+    return res
+  }
   if (!Number.isInteger(args.quantidade) || args.quantidade <= 0) {
-    return { status: 'recusado' as const, erro: 'QUANTIDADE_INVALIDA', mensagem: 'A quantidade deve ser um inteiro maior que zero.' }
+    const res = { status: 'recusado' as const, erro: 'QUANTIDADE_INVALIDA', mensagem: 'A quantidade deve ser um inteiro maior que zero.' }
+    registrarAuditoria(context.username, context.sessionId, 'registrar_intencao', args, res)
+    return res
   }
   if (args.quantidade > produto.estoque) {
-    return { status: 'recusado' as const, erro: 'ESTOQUE_INSUFICIENTE', mensagem: 'Não há estoque suficiente para essa quantidade.' }
+    const res = { status: 'recusado' as const, erro: 'ESTOQUE_INSUFICIENTE', mensagem: 'Não há estoque suficiente para essa quantidade.' }
+    registrarAuditoria(context.username, context.sessionId, 'registrar_intencao', args, res)
+    return res
   }
 
   const intent: PurchaseIntent = {
@@ -59,10 +100,12 @@ export function registrarIntencao(
     moeda: produto.moeda, status: 'pendente', expiraEm: new Date(now.getTime() + INTENT_TTL_MS),
   }
   intents.set(intent.intencaoId, intent)
-  return {
+  const res = {
     intencao_id: intent.intencaoId, produto_id: intent.produtoId, quantidade: intent.quantidade,
     valor_total: intent.valorTotal, moeda: intent.moeda, status: intent.status, expira_em: intent.expiraEm.toISOString(),
   }
+  registrarAuditoria(context.username, context.sessionId, 'registrar_intencao', args, res)
+  return res
 }
 
 export function realizarCompra(
@@ -72,32 +115,54 @@ export function realizarCompra(
 ) {
   const intent = intents.get(args.intencao_id)
   if (!intent || intent.username !== context.username || intent.sessionId !== context.sessionId) {
-    return refused('INTENCAO_INVALIDA', 'A intenção informada não é válida para esta sessão.')
+    const res = refused('INTENCAO_INVALIDA', 'A intenção informada não é válida para esta sessão.')
+    registrarAuditoria(context.username, context.sessionId, 'realizar_compra', args, res)
+    return res
   }
-  if (intent.status === 'paga') return refused('INTENCAO_JA_PAGA', 'Esta intenção já foi utilizada em uma compra.')
-  if (now.getTime() >= intent.expiraEm.getTime()) return refused('INTENCAO_EXPIRADA', 'Esta intenção de compra expirou.')
+  if (intent.status === 'paga') {
+    const res = refused('INTENCAO_JA_PAGA', 'Esta intenção já foi utilizada em uma compra.')
+    registrarAuditoria(context.username, context.sessionId, 'realizar_compra', args, res)
+    return res
+  }
+  if (now.getTime() >= intent.expiraEm.getTime()) {
+    const res = refused('INTENCAO_EXPIRADA', 'Esta intenção de compra expirou.')
+    registrarAuditoria(context.username, context.sessionId, 'realizar_compra', args, res)
+    return res
+  }
   if (args.metodo_pagamento !== 'cartao' && args.metodo_pagamento !== 'pix') {
-    return refused('METODO_INVALIDO', 'Use cartao ou pix como método de pagamento.')
+    const res = refused('METODO_INVALIDO', 'Use cartao ou pix como método de pagamento.')
+    registrarAuditoria(context.username, context.sessionId, 'realizar_compra', args, res)
+    return res
   }
 
   const limiteAtual = obterLimiteDisponivel(context)
   if (intent.valorTotal > limiteAtual) {
-    return refused('LIMITE_EXCEDIDO', 'O valor da compra excede o limite disponível do usuário.')
+    const res = refused('LIMITE_EXCEDIDO', 'O valor da compra excede o limite disponível do usuário.')
+    registrarAuditoria(context.username, context.sessionId, 'realizar_compra', args, res)
+    return res
   }
   const produto = CATALOGO.find((item) => item.id === intent.produtoId)
   if (!produto || produto.estoque < intent.quantidade) {
-    return refused('INTENCAO_INVALIDA', 'O produto desta intenção não possui mais estoque suficiente.')
+    const res = refused('INTENCAO_INVALIDA', 'O produto desta intenção não possui mais estoque suficiente.')
+    registrarAuditoria(context.username, context.sessionId, 'realizar_compra', args, res)
+    return res
   }
 
   const limiteRestante = money(limiteAtual - intent.valorTotal)
   intent.status = 'paga'
   produto.estoque -= intent.quantidade
   balances.set(context.username, limiteRestante)
-  return {
+  const res = {
     status: 'aprovado' as const, transacao_id: newId('tx'), intencao_id: intent.intencaoId,
     valor: intent.valorTotal, metodo_pagamento: args.metodo_pagamento as PaymentMethod,
     limite_restante: limiteRestante, data: now.toISOString(),
   }
+  registrarAuditoria(context.username, context.sessionId, 'realizar_compra', args, res)
+  return res
 }
 
-export function resetPaymentStateForTests() { intents.clear(); balances.clear() }
+export function resetPaymentStateForTests() {
+  intents.clear()
+  balances.clear()
+  auditLogs.length = 0
+}

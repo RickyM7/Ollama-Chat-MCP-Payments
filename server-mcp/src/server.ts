@@ -3,7 +3,15 @@ import jwt from 'jsonwebtoken'
 import { z } from 'zod'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
-import { listarCatalogo, obterLimiteDisponivel, realizarCompra, registrarIntencao, type PaymentContext } from './tools.ts'
+import {
+  listarCatalogo,
+  obterLimiteDisponivel,
+  obterLogsAuditoria,
+  realizarCompra,
+  registrarAuditoria,
+  registrarIntencao,
+  type PaymentContext,
+} from './tools.ts'
 
 const PORT = Number(process.env.MCP_PORT ?? process.env.PORT ?? 4000)
 const JWT_SECRET = process.env.JWT_SECRET || 'fellowship-workshop-secret-token-change-in-prod'
@@ -38,7 +46,11 @@ function createMcp(context: PaymentContext) {
         categoria: z.string().optional().describe('Filtro opcional por categoria de produto.'),
       },
     },
-    async ({ categoria }) => json(listarCatalogo({ categoria }))
+    async ({ categoria }) => {
+      const res = listarCatalogo({ categoria })
+      registrarAuditoria(context.username, context.sessionId, 'listar_catalogo', { categoria }, { total: res.produtos.length })
+      return json(res)
+    }
   )
 
   mcp.registerTool(
@@ -79,6 +91,16 @@ app.get('/account', (req, res) => {
   }
   res.setHeader('Cache-Control', 'no-store')
   res.json({ username: context.username, limite: obterLimiteDisponivel(context) })
+})
+
+app.get('/audit', (req, res) => {
+  const context = authenticatedContext(req)
+  if (!context) {
+    res.status(401).json({ error: 'Não autorizado.' })
+    return
+  }
+  res.setHeader('Cache-Control', 'no-store')
+  res.json(obterLogsAuditoria())
 })
 
 app.post('/mcp', async (req, res) => {
