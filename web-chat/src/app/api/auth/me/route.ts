@@ -1,27 +1,28 @@
-import { verifyJWT, getJWTFromCookie } from '@/lib/auth'
-import { findUserById } from '@/lib/users'
+import { NextResponse } from 'next/server'
+import { verifyUserToken, findUserByUsername } from '@/lib/auth'
 
 export async function GET(request: Request) {
-    try {
-        const cookieHeader = request.headers.get('cookie') ?? ''
-        const token = getJWTFromCookie(cookieHeader)
+  const authHeader = request.headers.get('authorization')
+  const token = authHeader?.replace(/^Bearer /, '')
 
-        if (!token) {
-            return Response.json({ error: 'não autenticado' }, { status: 401 })
-        }
+  if (!token) {
+    return NextResponse.json({ error: 'Não autorizado. Token ausente.' }, { status: 401 })
+  }
 
-        const payload = await verifyJWT(token)
-        if (!payload) {
-            return Response.json({ error: 'token inválido' }, { status: 401 })
-        }
+  const payload = verifyUserToken(token)
+  if (!payload) {
+    return NextResponse.json({ error: 'Token inválido ou expirado.' }, { status: 401 })
+  }
 
-        const user = findUserById(payload.id)
-        if (!user) {
-            return Response.json({ error: 'usuário não encontrado' }, { status: 401 })
-        }
+  const user = findUserByUsername(payload.username)
+  if (!user) {
+    return NextResponse.json({ error: 'Usuário não encontrado.' }, { status: 404 })
+  }
 
-        return Response.json({ id: user.id, username: user.username })
-    } catch (err) {
-        return Response.json({ error: String(err) }, { status: 500 })
-    }
+  return NextResponse.json({
+    username: user.username,
+    role: user.role,
+    limite: user.limite,
+  })
 }
+
