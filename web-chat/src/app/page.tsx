@@ -69,7 +69,7 @@ export default function Page() {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth?.token ?? ''}` },
-        body: JSON.stringify({ message: user.content, sessionId: sessionId.current }),
+        body: JSON.stringify({ messages: payload, sessionId: sessionId.current }),
       })
       if (res.status === 401) {
         setAuth(null)

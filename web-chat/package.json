@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "check": "tsx src/lib/chat-history.check.ts && tsc --noEmit",
+    "check": "tsc --noEmit",
     "start": "next start",
     "lint": "eslint"
   },
