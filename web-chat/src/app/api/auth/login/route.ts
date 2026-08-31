@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { findUserByUsername, verifyPassword, signUserToken, JWT_TTL } from '@/lib/auth'
+import { findUserByUsername, getCurrentUserLimit, verifyPassword, signUserToken, JWT_TTL } from '@/lib/auth'
 
 export async function POST(request: Request) {
   try {
@@ -16,12 +16,13 @@ export async function POST(request: Request) {
     }
 
     const token = signUserToken(user)
+    const limite = await getCurrentUserLimit(token, user.limite)
 
     return NextResponse.json({
       token,
       username: user.username,
       role: user.role,
-      limite: user.limite,
+      limite,
       expiresIn: JWT_TTL,
     })
   } catch (err) {

@@ -4,6 +4,7 @@ import { useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import { LoginForm } from '@/components/LoginForm'
 import { ChatHeader } from '@/components/ChatHeader'
+import { CHAT_SYSTEM_PROMPT } from '@/lib/chat-system'
 import type { AuthResponse } from '@/types/index'
 
 type Role = 'system' | 'user' | 'assistant'
@@ -18,11 +19,7 @@ type Turn = Message & { sent?: ModelMessage[]; tools?: ToolRun[] }
 
 const SYSTEM: Message = {
   role: 'system',
-  content:
-    'Você é um vendedor de uma loja de eletrônicos. Responda sempre em português brasileiro, de forma objetiva e educada. ' +
-    'Use listar_catalogo para consultar produtos e preços. Use registrar_intencao quando o usuário escolher produto e quantidade. ' +
-    'Só use realizar_compra depois que houver uma intenção válida e o usuário escolher cartao ou pix. ' +
-    'Nunca invente produtos, preços, valores, IDs ou resultados; explique claramente qualquer erro retornado pelas ferramentas.',
+  content: CHAT_SYSTEM_PROMPT,
 }
 
 function modelHistory(turns: Turn[]): ModelMessage[] {

@@ -79,3 +79,37 @@ npm install
 npm run dev
 ```
 Interface disponível em: `http://localhost:3000`
+
+### Usuários de demonstração
+
+| Usuário | Senha | Limite inicial |
+|---|---|---:|
+| `alice` | `alice123` | R$ 500,00 |
+| `bob` | `bob123` | R$ 1.500,00 |
+| `root` | `root123` | R$ 5.000,00 |
+
+## Fluxo seguro de compra
+
+O servidor MCP expõe `listar_catalogo`, `registrar_intencao` e `realizar_compra`. As intenções duram 10 minutos e ficam vinculadas ao usuário autenticado e à sessão do chat. O preço é calculado pelo servidor a partir do catálogo; `realizar_compra` recebe somente o ID da intenção e o método (`cartao` ou `pix`). Intenções inventadas, expiradas, já pagas, pertencentes a outra sessão ou acima do limite são recusadas no backend.
+
+O backend do chat mantém o histórico completo de cada sessão e o envia ao modelo em todos os turnos. Esse histórico inclui mensagens do usuário e do assistente, chamadas de ferramentas e seus resultados. Uma compra também é recusada quando o ID da intenção não aparece como uma intenção pendente nesse histórico confiável.
+
+Os dados desta demonstração — usuários, limites atualizados, estoque e intenções — ficam em memória e são restaurados quando os respectivos servidores são reiniciados.
+
+## Validação local
+
+Com as dependências instaladas, execute:
+
+```bash
+cd server-mcp
+npm run check
+```
+
+```bash
+cd web-chat
+npm run check
+npm run lint
+npm run build
+```
+
+Os testes cobrem catálogo, registro sem movimentação financeira, PIX, cartão, limite excedido, método inválido e intenções inventadas, expiradas, reutilizadas, de outro usuário ou de outra sessão.

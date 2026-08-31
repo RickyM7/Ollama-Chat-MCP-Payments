@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "check": "node src/lib/chat-history.check.ts && tsc --noEmit",
+    "check": "tsx src/lib/chat-history.check.ts && tsc --noEmit",
     "start": "next start",
     "lint": "eslint"
   },
@@ -27,6 +27,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.2",
     "tailwindcss": "^4",
+    "tsx": "^4.23.13",
     "typescript": "^5"
   }
 }

@@ -1,5 +1,10 @@
 export type HistoryMessage = { role: string; content: string }
 
+export function isCatalogRequest(message: string) {
+  const normalized = message.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  return /(catalog|produto|item|vende|venda|dispon|estoque|preco|quanto custa|comprar|quero)/.test(normalized)
+}
+
 export function intentAppearsInHistory(messages: HistoryMessage[], intentId: string) {
   return messages.some((message) => {
     if (message.role !== 'tool') return false

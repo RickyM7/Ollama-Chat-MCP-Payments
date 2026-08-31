@@ -67,3 +67,20 @@ export function deductUserBalance(username: string, amount: number): boolean {
   user.limite = Number((user.limite - amount).toFixed(2))
   return true
 }
+
+export async function getCurrentUserLimit(token: string, fallback: number): Promise<number> {
+  try {
+    const accountUrl = new URL(process.env.MCP_URL ?? 'http://localhost:4000/mcp')
+    accountUrl.pathname = '/account'
+    accountUrl.search = ''
+    const response = await fetch(accountUrl, {
+      headers: { Authorization: `Bearer ${token}`, 'X-Chat-Session': 'account-balance' },
+      cache: 'no-store',
+    })
+    if (!response.ok) return fallback
+    const data = await response.json() as { limite?: unknown }
+    return typeof data.limite === 'number' && data.limite >= 0 ? data.limite : fallback
+  } catch {
+    return fallback
+  }
+}
