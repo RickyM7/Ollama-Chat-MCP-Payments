@@ -5,9 +5,11 @@ import type { AuthResponse } from '@/types/index'
 type Props = {
   user: AuthResponse
   onLogout: () => void
+  onToggleInspect: () => void
+  isInspecting: boolean
 }
 
-export function ChatHeader({ user, onLogout }: Props) {
+export function ChatHeader({ user, onLogout, onToggleInspect, isInspecting }: Props) {
   const formattedLimit = new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL',
@@ -24,14 +26,26 @@ export function ChatHeader({ user, onLogout }: Props) {
         </p>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
         <div className="rounded border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
           Limite: {formattedLimit}
         </div>
         <button
           type="button"
+          onClick={onToggleInspect}
+          className={`rounded border px-2.5 py-1 text-xs transition-colors ${
+            isInspecting
+              ? 'border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-950 dark:text-blue-300 font-medium'
+              : 'border-gray-300 text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800'
+          }`}
+          title="Alternar painel de inspeção de histórico do modelo"
+        >
+          {isInspecting ? '✕ Fechar Inspeção' : '🔍 Inspecionar Histórico'}
+        </button>
+        <button
+          type="button"
           onClick={onLogout}
-          className="rounded border px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+          className="rounded border border-gray-300 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
         >
           Sair
         </button>

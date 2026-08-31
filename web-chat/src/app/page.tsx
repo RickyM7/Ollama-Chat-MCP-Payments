@@ -40,8 +40,8 @@ export default function Page() {
   const [messages, setMessages] = useState<Turn[]>([])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
-  const [peek, setPeek] = useState<number | null>(null)
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const [showInspect, setShowInspect] = useState(false)
+  const [systemPrompt, setSystemPrompt] = useState<string>('')
   const sessionId = useRef<string | null>(null)
   if (!sessionId.current) sessionId.current = crypto.randomUUID()
 
@@ -72,6 +72,17 @@ export default function Page() {
     } catch {}
   }, [])
 
+  useEffect(() => {
+    if (showInspect && auth?.token && !systemPrompt) {
+      fetch('/api/system', { headers: { Authorization: `Bearer ${auth.token}` } })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.prompt) setSystemPrompt(data.prompt)
+        })
+        .catch(() => {})
+    }
+  }, [showInspect, auth?.token, systemPrompt])
+
   function handleLoginSuccess(data: AuthResponse) {
     setAuth(data)
     try {
@@ -83,19 +94,13 @@ export default function Page() {
   function handleLogout() {
     setAuth(null)
     setMessages([])
+    setShowInspect(false)
+    setSystemPrompt('')
     sessionId.current = crypto.randomUUID()
     try {
       sessionStorage.removeItem('chat_auth')
       sessionStorage.removeItem('chat_session_id')
     } catch {}
-  }
-
-  function showPeek(i: number) {
-    clearTimeout(closeTimer.current)
-    setPeek(i)
-  }
-  function hidePeek() {
-    closeTimer.current = setTimeout(() => setPeek(null), 400)
   }
 
   async function send(e: { preventDefault(): void }) {
@@ -171,84 +176,147 @@ export default function Page() {
 
   if (!auth) return <LoginForm onLoginSuccess={handleLoginSuccess} />
 
+  const currentPayload = modelHistory(messages)
+
   return (
-    <main className="mx-auto flex h-screen max-w-2xl flex-col gap-4 p-4">
-      <ChatHeader user={auth} onLogout={handleLogout} />
-      <p className="text-xs text-gray-500">
-        Histórico completo ativo, incluindo chamadas e resultados das ferramentas.
-      </p>
-
-      <div className="flex-1 space-y-3 overflow-y-auto">
-        {messages.length === 0 && (
-          <p className="text-sm text-gray-500">
-            Pergunte sobre o catálogo ou escolha um produto para iniciar uma compra.
-          </p>
-        )}
-        {messages.map((m, i) =>
-          m.role === 'user' ? (
-            <div
-              key={i}
-              onMouseEnter={() => showPeek(i)}
-              onMouseLeave={hidePeek}
-              className="ml-auto w-fit max-w-[80%] cursor-help whitespace-pre-wrap rounded bg-blue-600 px-3 py-2 text-white"
-            >
-              {m.content}
-            </div>
-          ) : (
-            <div
-              key={i}
-              className="prose-chat w-fit max-w-[80%] rounded bg-gray-200 px-3 py-2 dark:bg-gray-800"
-            >
-              {m.content ? <Markdown>{m.content}</Markdown> : '…'}
-            </div>
-          )
-        )}
-      </div>
-
-      <form onSubmit={send} className="flex gap-2">
-        <input
-          className="flex-1 rounded border px-3 py-2 text-sm bg-transparent border-gray-300 dark:border-gray-700 focus:outline-none focus:border-blue-600"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Pergunte alguma coisa…"
+    <main className="mx-auto flex h-screen max-w-5xl gap-4 p-4">
+      <div className="flex flex-1 flex-col gap-4">
+        <ChatHeader
+          user={auth}
+          onLogout={handleLogout}
+          onToggleInspect={() => setShowInspect((prev) => !prev)}
+          isInspecting={showInspect}
         />
-        <button
-          className="rounded bg-blue-600 px-4 py-2 text-sm text-white disabled:opacity-50 hover:bg-blue-700"
-          disabled={busy}
-        >
-          Enviar
-        </button>
-      </form>
 
-      {peek !== null && messages[peek]?.sent && (
-        <aside
-          onMouseEnter={() => showPeek(peek)}
-          onMouseLeave={hidePeek}
-          className="fixed right-4 top-4 z-10 max-h-[calc(100vh-2rem)] w-80 overflow-y-auto rounded border border-gray-300 bg-white p-3 text-xs shadow-lg xl:w-96 dark:border-gray-700 dark:bg-gray-900"
-        >
-          <p className="mb-2 font-semibold">
-            Enviado ao modelo ({messages[peek].sent.length}{' '}
-            {messages[peek].sent.length === 1 ? 'mensagem' : 'mensagens'})
-          </p>
-          {messages[peek].tools?.map((t, j) => (
-            <div
-              key={`tool-${j}`}
-              className="mb-2 rounded border border-amber-400 bg-amber-50 p-2 dark:bg-amber-950"
-            >
-              <span className="font-mono uppercase text-amber-700 dark:text-amber-400">
-                ferramenta · {t.name}
-              </span>
-              <p className="whitespace-pre-wrap font-mono">
-                {JSON.stringify(t.arguments)} → {JSON.stringify(t.result)}
+        <div className="flex-1 space-y-3 overflow-y-auto">
+          {messages.length === 0 && (
+            <div className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 dark:border-gray-700">
+              <p className="font-semibold text-gray-700 dark:text-gray-300">
+                Olá, {auth.username}! Como posso te ajudar hoje?
+              </p>
+              <p className="mt-1 text-xs text-gray-500">
+                Você pode pedir para ver o catálogo de eletrônicos, consultar preços ou comprar um produto.
               </p>
             </div>
-          ))}
-          {messages[peek].sent.map((s, j) => (
-            <div key={j} className="mb-2 last:mb-0">
-              <span className="font-mono uppercase text-gray-500">{s.role}</span>
-              <p className="whitespace-pre-wrap">{s.content}</p>
+          )}
+          {messages.map((m, i) =>
+            m.role === 'user' ? (
+              <div
+                key={i}
+                className="ml-auto w-fit max-w-[80%] whitespace-pre-wrap rounded bg-blue-600 px-3 py-2 text-white shadow-sm"
+              >
+                {m.content}
+              </div>
+            ) : (
+              <div
+                key={i}
+                className="prose-chat w-fit max-w-[80%] rounded bg-gray-200 px-3 py-2 text-gray-900 shadow-sm dark:bg-gray-800 dark:text-gray-100"
+              >
+                {m.content ? <Markdown>{m.content}</Markdown> : '…'}
+              </div>
+            )
+          )}
+        </div>
+
+        <form onSubmit={send} className="flex gap-2">
+          <input
+            className="flex-1 rounded border border-gray-300 bg-transparent px-3 py-2 text-sm focus:border-blue-600 focus:outline-none dark:border-gray-700"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Digite sua mensagem (ex: 'O que vocês vendem?', 'Quero 1 Fone Bluetooth')…"
+          />
+          <button
+            className="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+            disabled={busy}
+          >
+            Enviar
+          </button>
+        </form>
+      </div>
+
+      {showInspect && (
+        <aside className="flex w-96 flex-col rounded-lg border border-gray-300 bg-gray-50 p-4 text-xs shadow-md dark:border-gray-700 dark:bg-gray-900">
+          <div className="mb-3 flex items-center justify-between border-b pb-2">
+            <div>
+              <h2 className="font-bold text-gray-900 dark:text-gray-100">Painel de Inspeção LLM</h2>
+              <p className="text-[10px] text-gray-500">Histórico completo e contexto do modelo</p>
             </div>
-          ))}
+            <button
+              onClick={() => setShowInspect(false)}
+              className="rounded p-1 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-800"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="flex-1 space-y-3 overflow-y-auto pr-1">
+            <details className="group rounded border border-purple-300 bg-purple-50 p-2.5 dark:border-purple-900 dark:bg-purple-950">
+              <summary className="flex cursor-pointer items-center justify-between font-mono text-[10px] font-bold uppercase text-purple-800 dark:text-purple-300 select-none">
+                <div className="flex items-center gap-1.5">
+                  <span className="transition-transform duration-200 group-open:rotate-90">▶</span>
+                  <span>System Prompt</span>
+                </div>
+                <span className="text-[9px] font-normal lowercase text-purple-600 dark:text-purple-400">
+                  (regras fixas anexadas a todas as mensagens)
+                </span>
+              </summary>
+              <div className="mt-2 border-t border-purple-200 pt-2 dark:border-purple-900">
+                <p className="whitespace-pre-wrap font-mono text-[10px] leading-relaxed text-purple-950 dark:text-purple-200">
+                  {systemPrompt || 'Carregando prompt oficial do backend...'}
+                </p>
+              </div>
+            </details>
+
+            <div className="border-t pt-2">
+              <p className="mb-2 font-semibold text-gray-700 dark:text-gray-300">
+                Turnos no Histórico ({currentPayload.length} mensagens):
+              </p>
+
+              {currentPayload.length === 0 && (
+                <p className="text-[11px] text-gray-400">Nenhuma mensagem trocada ainda.</p>
+              )}
+
+              {currentPayload.map((msg, idx) => (
+                <div key={idx} className="mb-2 rounded border border-gray-200 bg-white p-2 dark:border-gray-800 dark:bg-gray-950">
+                  <div className="flex items-center justify-between">
+                    <span
+                      className={`font-mono text-[10px] font-bold uppercase ${
+                        msg.role === 'user'
+                          ? 'text-blue-600 dark:text-blue-400'
+                          : msg.role === 'tool'
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : 'text-gray-600 dark:text-gray-400'
+                      }`}
+                    >
+                      {msg.role}
+                    </span>
+                    <span className="text-[9px] text-gray-400">#{idx + 1}</span>
+                  </div>
+
+                  {msg.tool_calls && (
+                    <div className="mt-1 rounded border border-amber-300 bg-amber-50 p-1.5 dark:border-amber-900 dark:bg-amber-950">
+                      {msg.tool_calls.map((call, cIdx) => (
+                        <div key={cIdx}>
+                          <span className="font-mono font-bold text-amber-800 dark:text-amber-300">
+                            Chamada: {call.function.name}
+                          </span>
+                          <pre className="mt-0.5 overflow-x-auto font-mono text-[10px] text-amber-900 dark:text-amber-200">
+                            {JSON.stringify(call.function.arguments, null, 2)}
+                          </pre>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {msg.content && (
+                    <p className="mt-1 whitespace-pre-wrap font-mono text-[11px] text-gray-800 dark:text-gray-200">
+                      {msg.content}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
         </aside>
       )}
     </main>
