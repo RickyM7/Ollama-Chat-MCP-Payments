@@ -1,0 +1,22 @@
+npm run check
+
+> server-mcp@1.0.0 check
+> tsx src/tools.check.ts && tsc --noEmit
+
+[AUDIT] 2026-08-31T23:40:12.132Z | User: alice | Tool: registrar_intencao | Result: {"status":"recusado","erro":"PRODUTO_INVALIDO","mensagem":"Produto não encontrado no catálogo."}
+[AUDIT] 2026-08-31T23:40:12.134Z | User: alice | Tool: registrar_intencao | Result: {"status":"recusado","erro":"QUANTIDADE_INVALIDA","mensagem":"A quantidade deve ser um inteiro maior que zero."}
+[AUDIT] 2026-08-31T23:40:12.134Z | User: alice | Tool: registrar_intencao | Result: {"status":"recusado","erro":"ESTOQUE_INSUFICIENTE","mensagem":"Não há estoque suficiente para essa quantidade."}
+[AUDIT] 2026-08-31T23:40:12.135Z | User: alice | Tool: registrar_intencao | Result: {"intencao_id":"int_e3b891ca45a9","produto_id":"prod_003","quantidade":1,"valor_total":249.9,"moeda":"BRL","status":"pendente","expira_em":"2026-08-31T23:50:12.134Z"}
+[AUDIT] 2026-08-31T23:40:12.136Z | User: alice | Tool: realizar_compra | Result: {"status":"aprovado","transacao_id":"tx_fff69bea5352","intencao_id":"int_e3b891ca45a9","valor":249.9,"metodo_pagamento":"pix","limite_restante":250.1,"data":"2026-08-31T23:40:12.135Z"}
+[AUDIT] 2026-08-31T23:40:12.136Z | User: alice | Tool: realizar_compra | Result: {"status":"recusado","erro":"INTENCAO_JA_PAGA","mensagem":"Esta intenção já foi utilizada em uma compra."}
+[AUDIT] 2026-08-31T23:40:12.136Z | User: alice | Tool: realizar_compra | Result: {"status":"recusado","erro":"INTENCAO_INVALIDA","mensagem":"A intenção informada não é válida para esta sessão."}
+[AUDIT] 2026-08-31T23:40:12.136Z | User: bob | Tool: registrar_intencao | Result: {"intencao_id":"int_1c07ea7f3eb2","produto_id":"prod_006","quantidade":1,"valor_total":149.5,"moeda":"BRL","status":"pendente","expira_em":"2026-08-31T23:50:12.136Z"}
+[AUDIT] 2026-08-31T23:40:12.137Z | User: bob | Tool: realizar_compra | Result: {"status":"recusado","erro":"INTENCAO_INVALIDA","mensagem":"A intenção informada não é válida para esta sessão."}
+[AUDIT] 2026-08-31T23:40:12.137Z | User: mallory | Tool: realizar_compra | Result: {"status":"recusado","erro":"INTENCAO_INVALIDA","mensagem":"A intenção informada não é válida para esta sessão."}
+[AUDIT] 2026-08-31T23:40:12.137Z | User: bob | Tool: realizar_compra | Result: {"status":"recusado","erro":"METODO_INVALIDO","mensagem":"Use cartao ou pix como método de pagamento."}
+[AUDIT] 2026-08-31T23:40:12.137Z | User: bob | Tool: realizar_compra | Result: {"status":"aprovado","transacao_id":"tx_f45ce276bc28","intencao_id":"int_1c07ea7f3eb2","valor":149.5,"metodo_pagamento":"cartao","limite_restante":1350.5,"data":"2026-08-31T23:40:12.137Z"}
+[AUDIT] 2026-08-31T23:40:12.138Z | User: poor | Tool: registrar_intencao | Result: {"intencao_id":"int_b98a521df0be","produto_id":"prod_003","quantidade":1,"valor_total":249.9,"moeda":"BRL","status":"pendente","expira_em":"2026-08-31T23:50:12.138Z"}
+[AUDIT] 2026-08-31T23:40:12.138Z | User: poor | Tool: realizar_compra | Result: {"status":"recusado","erro":"LIMITE_EXCEDIDO","mensagem":"O valor da compra excede o limite disponível do usuário."}
+[AUDIT] 2026-08-31T23:40:12.138Z | User: expired | Tool: registrar_intencao | Result: {"intencao_id":"int_0cb4e4746a85","produto_id":"prod_006","quantidade":1,"valor_total":149.5,"moeda":"BRL","status":"pendente","expira_em":"2026-01-01T00:10:00.000Z"}
+[AUDIT] 2026-08-31T23:40:12.138Z | User: expired | Tool: realizar_compra | Result: {"status":"recusado","erro":"INTENCAO_EXPIRADA","mensagem":"Esta intenção de compra expirou."}
+tools.check.ts: 100% dos cenários e regras de negócio validados com sucesso!

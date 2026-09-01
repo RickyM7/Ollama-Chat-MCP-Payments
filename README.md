@@ -1,63 +1,77 @@
-# Ollama Chat MCP Payments
+# Chatbot de Pagamentos MCP com Ollama
 
-Chatbot inteligente integrado a um servidor MCP (Model Context Protocol) para consultas de catálogo e compras simuladas com segurança e validação no backend.
+Chatbot inteligente integrado a um servidor MCP (*Model Context Protocol*) para consultas de catálogo e compras simuladas com segurança, validação criptográfica de token JWT e regras de negócio centralizadas no backend.
 
 ---
 
-## Estrutura do Projeto
+## 1. Arquitetura do Sistema
+
+![Arquitetura do Sistema](docs/screenshots/arquitetura.png)
+
+---
+
+## 2. Estrutura do Repositório
 
 ```text
 Ollama-Chat-MCP-Payments/
 ├── .env.example                  # Modelo de variáveis de ambiente
-├── .gitignore                    # Arquivos e pastas ignorados pelo Git
-├── README.md                     # Documentação principal e instruções de execução
+├── .gitignore                    # Regras de exclusão do Git
+├── README.md                     # Documentação principal
 │
 ├── docs/                         # Documentação e especificações
-│   ├── desafio.md                # Requisitos e contratos oficiais do desafio
-│   ├── setup-ollama.md           # Guia de configuração e teste do Ollama
-│   └── screenshots/              # Evidências e testes de execução
+│   ├── desafio.md                # Especificação oficial do desafio
+│   ├── roteiro-de-testes.md      # Guia de testes e homologação com evidências
+│   ├── setup-ollama.md           # Guia de instalação e configuração do Ollama
+│   └── screenshots/              # Evidências visuais de execução e logs
+│       ├── arquitetura.png           # Diagrama visual de arquitetura
+│       ├── 01-compra-pix.png         # Cenário 1: Compra via PIX (Alice)
+│       ├── 02-compra-cartao.png      # Cenário 2: Compra via Cartão (Bob)
+│       ├── 03-limite-excedido.png    # Cenário 3: Limite Excedido (Alice / PS5)
+│       ├── 04-intencao-invalida.png  # Cenário 4: Intenção Inválida
+│       ├── 05-anti-jailbreak.png     # Cenário 5: Teste Anti-Jailbreak e Inspeção
+│       ├── 06-auditoria.jsonl        # Cenário 6: Log persistente de auditoria
+│       └── 07-testes-unitarios.txt   # Cenário 7: Execução dos 16 testes automatizados
 │
 ├── server-mcp/                   # Servidor MCP de Pagamentos (Porta 4000)
-│   ├── package.json              # Scripts e dependências do servidor MCP
-│   ├── tsconfig.json             # Configuração TypeScript do server
+│   ├── package.json              # Dependências e scripts do MCP
+│   ├── tsconfig.json             # Configuração TypeScript
 │   └── src/
 │       ├── server.ts             # Servidor MCP HTTP exposto em /mcp
-│       ├── tools.ts              # Implementação das 3 ferramentas e catálogo
-│       └── tools.check.ts        # Testes e validações locais das tools
+│       ├── tools.ts              # Implementação das 3 tools e logs de auditoria
+│       └── tools.check.ts        # Suíte completa de testes unitários (16 testes)
 │
 └── web-chat/                     # Aplicação Web Fullstack Next.js (Porta 3000)
-    ├── package.json              # Scripts e dependências do web-chat
+    ├── package.json              # Dependências e scripts do web-chat
     ├── tsconfig.json             # Configuração TypeScript do Next.js
     ├── next.config.ts            # Configurações do Next.js
-    ├── postcss.config.mjs        # Configuração do PostCSS / Tailwind
-    ├── eslint.config.mjs         # Configuração de linter ESLint
     └── src/
-        ├── components/           # Componentes visuais (LoginForm, ChatHeader, etc.)
-        ├── lib/                  # Utilitários de backend e auth (JWT, scrypt)
+        ├── components/           # Componentes React (LoginForm, ChatHeader)
+        ├── lib/                  # Auth (JWT, scrypt) e chat-system (System Prompt)
         ├── types/                # Tipagens TypeScript centralizadas
         └── app/
-            ├── layout.tsx        # Layout raiz da aplicação
-            ├── globals.css       # Estilos globais e Tailwind v4
-            ├── page.tsx          # Interface de usuário (Login e Chat)
+            ├── layout.tsx        # Layout raiz
+            ├── globals.css       # Tailwind CSS
+            ├── page.tsx          # Interface principal do chat e inspetor
             └── api/
-                ├── auth/         # Rotas de autenticação (Login e consulta de saldo)
-                └── chat/         # Rota do agente conectada ao MCP e LLM
+                ├── auth/         # Rotas /api/auth/login e /api/auth/me
+                ├── chat/         # Rota do agente com streaming NDJSON
+                └── system/       # Rota /api/system para consulta do prompt
 ```
 
 ---
 
-## Como Executar Localmente
+## 3. Como Executar Localmente
 
 ### Pré-requisitos
 - [Node.js](https://nodejs.org) (v20+ recomendado) e [npm](https://www.npmjs.com/)
-- [Ollama](https://ollama.com) instalado e rodando com o modelo configurado
+- [Ollama](https://ollama.com) instalado
 
-### 1. Iniciar o Ollama
+### 1. Iniciar o Ollama e Baixar o Modelo
 Em um terminal:
 ```bash
 ollama serve
 ```
-Certifique-se de que o modelo está baixado:
+Certifique-se de que o modelo oficial/recomendado do desafio está disponível:
 ```bash
 ollama pull qwen3:1.7b
 ```
@@ -78,38 +92,69 @@ cd web-chat
 npm install
 npm run dev
 ```
-Interface disponível em: `http://localhost:3000`
+Acesse a interface no navegador em: `http://localhost:3000`
 
-### Usuários de demonstração
+---
 
-| Usuário | Senha | Limite inicial |
-|---|---|---:|
-| `alice` | `alice123` | R$ 500,00 |
-| `bob` | `bob123` | R$ 1.500,00 |
-| `carla` | `carla123` | R$ 5.000,00 |
+## 4. Usuários de Demonstração
 
-## Fluxo seguro de compra
+| Usuário | Senha | Limite Inicial | Objetivo de Teste |
+|---|---|---:|---|
+| `alice` | `alice123` | R$ 500,00 | Compras de menor valor e estouro de limite no PlayStation 5. |
+| `bob` | `bob123` | R$ 1.500,00 | Compras intermediárias (PIX e Cartão). |
+| `carla` | `carla123` | R$ 5.000,00 | Compras de alto valor, testes de segurança e auditoria. |
 
-O servidor MCP expõe `listar_catalogo`, `registrar_intencao` e `realizar_compra`. As intenções duram 10 minutos e ficam vinculadas ao usuário autenticado e à sessão do chat. O preço é calculado pelo servidor a partir do catálogo; `realizar_compra` recebe somente o ID da intenção e o método (`cartao` ou `pix`). Intenções inventadas, expiradas, já pagas, pertencentes a outra sessão ou acima do limite são recusadas no backend.
+---
 
-O backend do chat mantém o histórico completo de cada sessão e o envia ao modelo em todos os turnos. Esse histórico inclui mensagens do usuário e do assistente, chamadas de ferramentas e seus resultados. Uma compra também é recusada quando o ID da intenção não aparece como uma intenção pendente nesse histórico confiável.
+## 5. As Três Ferramentas MCP
 
-Os dados desta demonstração — usuários, limites atualizados, estoque e intenções — ficam em memória e são restaurados quando os respectivos servidores são reiniciados.
+1. **`listar_catalogo({ categoria?: string })`**:
+   - Retorna os produtos disponíveis no catálogo (`id`, `nome`, `preco`, `moeda`, `estoque`) com suporte a filtro opcional por categoria e normalização de acentuação.
+2. **`registrar_intencao({ produto_id: string, quantidade: number })`**:
+   - Gera uma intenção de compra com validade de 10 minutos e calcula o preço no backend. **Não movimenta saldo nem altera estoque**.
+3. **`realizar_compra({ intencao_id: string, metodo_pagamento: "cartao" | "pix" })`**:
+   - Efetua a cobrança com base no valor da intenção e debita o saldo do usuário. O valor da compra **não é parâmetro**, impedindo qualquer manipulação de preço pelo modelo.
 
-## Validação local
+---
 
-Com as dependências instaladas, execute:
+## 6. Diferenciais e Recursos Extras
+
+- **Auditoria Estruturada e Persistente**: Todas as operações de ferramentas são registradas com data/hora em ISO 8601, usuário autenticado, parâmetros e resultado no arquivo `server-mcp/logs/audit.jsonl` e expostas na rota autenticada `GET /audit` (amostra em [docs/screenshots/06-auditoria.jsonl](docs/screenshots/06-auditoria.jsonl)).
+- **Painel de Inspeção do LLM**: Botão `🔍 Inspecionar Histórico` na interface permitindo inspecionar o System Prompt oficial do backend e todos os turnos de conversa e chamadas de ferramentas.
+- **Proteção Anti-Jailbreak**: Prompt do sistema e backend blindados contra tentativas de injeção de prompt, bypass de regras ou privilégios de administrador fictícios.
+- **Ocultação de Identificadores Técnicos**: O `intencao_id` é mantido exclusivamente no histórico interno do modelo, sem poluir as mensagens de chat para o cliente (mas ainda pode ocorrer dependendo do quão poluída está a janela de contexto do modelo).
+
+---
+
+## 7. Galeria de Evidências dos Testes
+
+| Cenário | Descrição | Evidência Visual |
+|---|---|:---:|
+| **1. Compra PIX** | Alice compra Fone Bluetooth e debita limite para R$ 250,10. | [01-compra-pix.png](docs/screenshots/01-compra-pix.png) |
+| **2. Compra Cartão** | Bob compra Cadeira Gamer e debita limite para R$ 201,00. | [02-compra-cartao.png](docs/screenshots/02-compra-cartao.png) |
+| **3. Limite Excedido** | Tentativa de compra de PS5 recusada por limite insuficiente. | [03-limite-excedido.png](docs/screenshots/03-limite-excedido.png) |
+| **4. Intenção Inválida** | Tentativa de compra com ID inventado recusada pelo backend. | [04-intencao-invalida.png](docs/screenshots/04-intencao-invalida.png) |
+| **5. Anti-Jailbreak** | Bloqueio de injeção de prompt com painel de inspeção aberto. | [05-anti-jailbreak.png](docs/screenshots/05-anti-jailbreak.png) |
+| **6. Auditoria** | Logs de chamadas de tools persistidos em JSONL. | [06-auditoria.jsonl](docs/screenshots/06-auditoria.jsonl) |
+| **7. Testes Unitários** | Execução de 16 testes automatizados com 100% de sucesso. | [07-testes-unitarios.txt](docs/screenshots/07-testes-unitarios.txt) |
+
+Para o roteiro completo com todas as capturas de tela renderizadas e o passo a passo de reprodução, consulte:
+**[docs/roteiro-de-testes.md](docs/roteiro-de-testes.md)**.
+
+---
+
+## 8. Validação Local dos Testes
+
+Para rodar a suíte completa de 16 testes unitários automatizados no servidor MCP:
 
 ```bash
 cd server-mcp
 npm run check
 ```
 
+Para validar a integridade de tipos do web-chat:
+
 ```bash
 cd web-chat
 npm run check
-npm run lint
-npm run build
 ```
-
-Os testes cobrem catálogo, registro sem movimentação financeira, PIX, cartão, limite excedido, método inválido e intenções inventadas, expiradas, reutilizadas, de outro usuário ou de outra sessão.
