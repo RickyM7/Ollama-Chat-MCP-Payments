@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "check": "tsc --noEmit",
+    "check": "tsc --noEmit && echo 'web-chat: tipos TypeScript validados com sucesso!'",
     "start": "next start",
     "lint": "eslint"
   },
