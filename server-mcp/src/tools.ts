@@ -70,9 +70,13 @@ function refused(
   mensagem: string
 ) { return { status: 'recusado' as const, erro, mensagem } }
 
+function normalize(str: string): string {
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+}
+
 export function listarCatalogo(args?: { categoria?: string }) {
-  const cat = typeof args?.categoria === 'string' ? args.categoria.trim().toLowerCase() : ''
-  const produtos = cat ? CATALOGO.filter((p) => p.categoria?.toLowerCase() === cat) : CATALOGO
+  const cat = typeof args?.categoria === 'string' ? normalize(args.categoria) : ''
+  const produtos = cat ? CATALOGO.filter((p) => p.categoria && normalize(p.categoria) === cat) : CATALOGO
   return { produtos: produtos.map(({ id, nome, preco, moeda, estoque }) => ({ id, nome, preco, moeda, estoque })) }
 }
 
